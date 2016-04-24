@@ -1,7 +1,7 @@
 const _ = require('lodash');
 const assert = require('assert');
 
-var audio = new Audio(__dirname + '/../wav/ding.wav');
+var audio = new Audio(__dirname + '/../wav/announcements/default/ding.wav');
 document.getElementById('play').addEventListener('click', function(){
 	audio.currentTime = 0;
 	audio.play();
