@@ -70,16 +70,14 @@ function Comms(options) {
 
 		timer = setTimeout(function() {
 			$('[data-connection]').text('Connection lost');
-		}, 2000);
+		}, 5000);
 
-		// console.table(dataRefs);
-
-		this.options.onDataReceived(dataRefs);
+		options.onDataReceived(dataRefs);
 	}
 
 	this.init = function() {
 		server.on('listening', handleListening);
-		server.on('message', _.throttle(handleMessage, 2000));
+		server.on('message', _.throttle(handleMessage, 1000));
 		server.bind(PORT, HOST);
 	}
 
