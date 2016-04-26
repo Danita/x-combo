@@ -8,6 +8,8 @@
     "package": "electron-packager ./ --platform=win32 --arch=all --out=./dist --overwrite --prune --ignore=idea"
   },
   "dependencies": {
+    "javascript-state-machine": "2.3.5",
+    "jquery": "2.2.3",
     "lodash": "4.11.1"
   },
   "devDependencies": {

@@ -1,8 +1,10 @@
 const _ = require('lodash');
+const $ = require('jquery');
 const assert = require('assert');
+const StateMachine = require("javascript-state-machine");
 
 var audio = new Audio(__dirname + '/../wav/announcements/default/ding.wav');
-document.getElementById('play').addEventListener('click', function(){
+$('#play').on('click', function(){
 	audio.currentTime = 0;
 	audio.play();
 });
@@ -56,16 +58,51 @@ function onUDPMessageReceived(message, remote) {
 
 	var inputBuffer = Buffer.from(message, 'binary'),
 		prologueBuffer = getPrologue(inputBuffer),
-		sentenceBuffers = getSentences(inputBuffer)
+		sentenceBuffers = getSentences(inputBuffer),
+		dataRefs = {}
 		;
 
 	assert.equal(prologueBuffer.toString('ascii', 0, 4), 'DATA', 'Invalid message prologue');
 
-	console.log(remote.address + ':' + remote.port +' - ' + inputBuffer.length + ' bytes, ' + sentenceBuffers.length + ' sentences.');
+	// console.log(remote.address + ':' + remote.port +' - ' + inputBuffer.length + ' bytes, ' + sentenceBuffers.length + ' sentences.');
 
 	_.forEach(sentenceBuffers, function(sentenceBuffer, k) {
 		var values = getValuesInSentence(sentenceBuffer);
-		console.log(k, 'Point:', sentenceBuffer.readUInt8(0), values.join());
+		dataRefs[sentenceBuffer.readUInt8(0)] = values;
+		// console.log(k, 'Point:', sentenceBuffer.readUInt8(0).toString(), values.join());
 	});
 
+	console.table(dataRefs);
+
 }
+
+var fsm = StateMachine.create({
+	initial: 'OFF',
+	error: function(eventName, from, to, args, errorCode, errorMessage) {
+		console.warn('event ' + eventName + ' incorrent: ' + errorMessage);
+	},
+	events: [
+		{ name: 'enable',  from: 'OFF',  to: 'STANDBY' },
+		{ name: 'startedTaxi', from: 'STANDBY', to: 'PUSHBACK' },
+		{ name: 'taxiingToRwy',  from: 'PUSHBACK', to: 'TAXI_RWY' },
+		{ name: 'enteredRwy', from: 'TAXI_RWY', to: 'TAKEOFF' },
+		{ name: 'tookOff', from: 'TAKEOFF', to: 'ASCENT' },
+		{ name: 'leveledFlight', from: 'ASCENT', to: 'CRUISE' },
+		{ name: 'turbulenceEncountered', from: 'CRUISE', to: 'CRUISE_TURBULENCE' },
+		{ name: 'turbulenceDissipated', from: 'CRUISE_TURBULENCE', to: 'CRUISE' },
+		{ name: 'startedDescent', from: ['CRUISE', 'CRUISE_TURBULENCE'], to: 'DESCENT' },
+		{ name: 'startedApproach', from: 'DESCENT', to: 'APPROACH' },
+		{ name: 'landing', from: 'APPROACH', to: 'LANDING' },
+		{ name: 'taxiingToTerm', from: 'LANDING', to: 'TAXI_TERM' },
+		{ name: 'disable', from: ['TAXI_TERM', 'LANDING', 'APPROACH', 'DESCENT', 'CRUISE',
+			'CRUISE_TURBULENCE', 'ASCENT', 'TAKEOFF', 'TAXI_RWY', 'PUSHBACK', 'STANDBY'], to: 'OFF' },
+	]});
+
+$('[data-event]').on('click', function(e) {
+	var event = $(this).data('event');
+	fsm[event]();
+});
+
+setInterval(function() {
+	$('[data-current-state]').text(fsm.current);
+}, 500);
