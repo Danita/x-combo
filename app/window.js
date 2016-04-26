@@ -1,13 +1,22 @@
 const _ = require('lodash');
 const $ = require('jquery');
 const assert = require('assert');
-const StateMachine = require("javascript-state-machine");
+const StateMachine = require('javascript-state-machine');
+const buzz = require('node-buzz');
 
-var audio = new Audio(__dirname + '/../wav/announcements/default/ding.wav');
-$('#play').on('click', function(){
-	audio.currentTime = 0;
-	audio.play();
-});
+function createAudio(name) {
+	return new buzz.sound(__dirname + '/../wav/announcements/default/' + name + '.wav');
+}
+
+var audios = {
+	'enable': createAudio('01-welcome'),
+	'startedTaxi': createAudio('02-start-taxi'),
+	'taxiingToRwy': createAudio('03-safety'),
+	'leveledFlight': createAudio('04-food-service'),
+	'startedApproach': createAudio('05-descent'),
+	'taxiingToTerm': createAudio('06-taxi-terminal'),
+	'turbulenceEncountered': createAudio('07-turbulence')
+};
 
 var PORT = 49003;
 var HOST = '127.0.0.1';
@@ -78,9 +87,9 @@ function onUDPMessageReceived(message, remote) {
 
 var fsm = StateMachine.create({
 	initial: 'OFF',
-	error: function(eventName, from, to, args, errorCode, errorMessage) {
-		console.warn('event ' + eventName + ' incorrent: ' + errorMessage);
-	},
+	// error: function(eventName, from, to, args, errorCode, errorMessage) {
+	// 	console.warn('event ' + eventName + ' incorrent: ' + errorMessage);
+	// },
 	events: [
 		{ name: 'enable',  from: 'OFF',  to: 'STANDBY' },
 		{ name: 'startedTaxi', from: 'STANDBY', to: 'PUSHBACK' },
@@ -106,3 +115,15 @@ $('[data-event]').on('click', function(e) {
 setInterval(function() {
 	$('[data-current-state]').text(fsm.current);
 }, 500);
+
+fsm.onenterstate = function(event, from, to) {
+	console.info(event, from, to);
+	if (audios[event]) {
+		buzz.all().stop();
+		audios[event].play();
+	}
+	if (event === 'disable') {
+		buzz.all().stop();
+	}
+};
+
