@@ -1,3 +1,10 @@
+/**
+ * @todo See which module has the responsibility for tracking the time necessary to fire certain events
+ * for example we don't want to trigger the turbulence announcement more than one or two times during
+ * the flight and certainly not on a short spike of turbulence, and not close to each other. Is it the
+ * aircraftStatus responsibility or is it of the state machine?
+ */
+
 const _ = require('lodash');
 const $ = require('jquery');
 const assert = require('assert');
@@ -17,23 +24,24 @@ status.init();
 var enabled = false;
 
 function handleDataReceived(dataRefs) {
-	if (!dataRefs[21] || !dataRefs[20] || !dataRefs[5]) {
-		alert('Data sets 5, 20, 21 are required');
+	if (!dataRefs[21] || !dataRefs[20] || !dataRefs[5] || !dataRefs[132]) {
+		alert('Data sets 5, 20, 21, 132 are required');
 		return;
 	}
 	if (enabled) {
 		var packet = {
+			timestamp: Date.now(),
 			totalDistTravelledFt: dataRefs[21][6],
 			altitudeMslFt: dataRefs[20][2],
 			isOnRwy: dataRefs[20][4],
-			turbulenceFactor: dataRefs[5][5]
+			turbulenceFactor: dataRefs[5][5],
+			vSpeed: dataRefs[132][1],
 		};
 		status.pushPacket(packet);
 	}
 }
 
-var checkInterval = null;
-
+var timer = null;
 var fsm = StateMachine.create({
 	initial: 'OFF',
 	error: function(eventName, from, to, args, errorCode, errorMessage) {
@@ -41,6 +49,8 @@ var fsm = StateMachine.create({
 	},
 	events: [
 		{name: 'enable', from: 'OFF', to: 'STANDBY'},
+		{name: 'enableFromTakeoff', from: 'OFF', to: 'TAKEOFF'},
+		{name: 'enableFromCruise', from: 'OFF', to: 'CRUISE'},
 		{name: 'startedTaxi', from: 'STANDBY', to: 'PUSHBACK'},
 		{name: 'taxiingToRwy', from: 'PUSHBACK', to: 'TAXI_RWY'},
 		{name: 'enteredRwy', from: 'TAXI_RWY', to: 'TAKEOFF'},
@@ -63,18 +73,66 @@ var fsm = StateMachine.create({
 		},
 		onSTANDBY: function(event, from, to) {
 			audio.playExclusive('welcome');
-			clearInterval(checkInterval);
-			checkInterval = setInterval(function() {
+			timer = setInterval(function() {
 				if (status.getDistanceTravelled() > 10) {
+					clearInterval(timer);
 					fsm.startedTaxi();
 				}
 			}, 1000);
 		},
 		onPUSHBACK: function(event, from, to) {
-			clearInterval(checkInterval);
 			audio.playExclusive('startTaxi');
-			// TODO: checks here to next state
+			setTimeout(function() {
+				fsm.taxiingToRwy();
+			}, 80); // TODO: This time should be user defined
 		},
+		onTAXI_RWY: function(event, from, to) {
+			audio.playExclusive('safety');
+			timer = setInterval(function() {
+				if (status.isOnRunway()) {
+					clearInterval(timer);
+					fsm.enteredRwy();
+				}
+			}, 1000);
+		},
+		onTAKEOFF: function(event, from, to) {
+			timer = setInterval(function() {
+				if (status.isAscending()) {
+					clearInterval(timer);
+					fsm.tookOff();
+				}
+			}, 1000);
+		},
+		onASCENT: function(event, from, to) {
+			timer = setInterval(function() {
+				if (status.hasReachedCruiseAltitude()) {
+					clearInterval(timer);
+					fsm.leveledFlight();
+				}
+			}, 1000);
+		},
+		onCRUISE: function(event, from, to) {
+			// TODO: schedule food service in 5 min
+			timer = setInterval(function() {
+				if (status.getTurbulence()) {
+					clearInterval(timer);
+					fsm.turbulenceEncountered();
+				}
+				// TODO: detect descent
+			}, 1000);
+		},
+		onCRUISE_TURBULENCE: function(event, from, to) {
+			// TODO: cancel food service
+			audio.playExclusive('turbulence');
+			timer = setInterval(function() {
+				if (!status.getTurbulence()) {
+					clearInterval(timer);
+					fsm.turbulenceDissipated();
+				}
+				// TODO: detect descent
+			}, 1000);
+		},
+
 		// TODO: rest of rules here
 	}
 });
@@ -89,13 +147,15 @@ $('[data-enable]').on('click', function(e) {
 	$('[data-enable]').attr('disabled', 'disabled');
 	$('[data-disable]').removeAttr('disabled');
 	status.reset();
-	fsm.enable();
+	var event = $(this).data('event');
+	fsm[event]();
 	enabled = true;
 });
 
 $('[data-disable]').on('click', function(e) {
 	$('[data-disable]').attr('disabled', 'disabled');
 	$('[data-enable]').removeAttr('disabled');
+	clearInterval(timer);
 	status.reset();
 	fsm.disable();
 	enabled = false;
@@ -103,5 +163,9 @@ $('[data-disable]').on('click', function(e) {
 
 setInterval(function() {
 	$('[data-current-state]').html(fsm.current + '<br>' + status.getHistoryLength() + ' packets - Last: ' + JSON.stringify(status.getLastPacket()));
+	$('[data-debug]').text('dist travelled: ' + status.getDistanceTravelled() + ' ' +
+		'isOnRunway: ' + status.isOnRunway() + ' ' +
+		'isAscending: ' + status.isAscending() + ' '
+	)
 }, 500);
 
