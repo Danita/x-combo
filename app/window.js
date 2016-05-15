@@ -41,7 +41,9 @@ function handleDataReceived(dataRefs) {
 	}
 }
 
-var timer = null;
+var timer = null,
+	timeout = null;
+
 var fsm = StateMachine.create({
 	initial: 'OFF',
 	error: function(eventName, from, to, args, errorCode, errorMessage) {
@@ -51,7 +53,8 @@ var fsm = StateMachine.create({
 		{name: 'enable', from: 'OFF', to: 'STANDBY'},
 		{name: 'enableFromTakeoff', from: 'OFF', to: 'TAKEOFF'},
 		{name: 'enableFromCruise', from: 'OFF', to: 'CRUISE'},
-		{name: 'startedTaxi', from: 'STANDBY', to: 'PUSHBACK'},
+		{name: 'startedBoarding', from: 'STANDBY', to: 'BOARDING'},
+		{name: 'startedTaxi', from: 'BOARDING', to: 'PUSHBACK'},
 		{name: 'taxiingToRwy', from: 'PUSHBACK', to: 'TAXI_RWY'},
 		{name: 'enteredRwy', from: 'TAXI_RWY', to: 'TAKEOFF'},
 		{name: 'tookOff', from: 'TAKEOFF', to: 'ASCENT'},
@@ -64,14 +67,21 @@ var fsm = StateMachine.create({
 		{name: 'taxiingToTerm', from: 'LANDING', to: 'TAXI_TERM'},
 		{
 			name: 'disable', from: ['TAXI_TERM', 'LANDING', 'APPROACH', 'DESCENT', 'CRUISE',
-			'CRUISE_TURBULENCE', 'ASCENT', 'TAKEOFF', 'TAXI_RWY', 'PUSHBACK', 'STANDBY'], to: 'OFF'
+			'CRUISE_TURBULENCE', 'ASCENT', 'TAKEOFF', 'TAXI_RWY', 'PUSHBACK', 'BOARDING', 'STANDBY'], to: 'OFF'
 		}
 	],
 	callbacks: {
 		onOFF: function(event, from, to) {
+			clearInterval(timer);
+			clearTimeout(timeout);
 			audio.stopAll();
 		},
 		onSTANDBY: function(event, from, to) {
+			timeout = setTimeout(function() {
+				fsm.startedBoarding();
+			}, 5000);
+		},
+		onBOARDING: function(event, from, to) {
 			audio.playExclusive('welcome');
 			timer = setInterval(function() {
 				if (status.getDistanceTravelled() > 10) {
@@ -82,7 +92,7 @@ var fsm = StateMachine.create({
 		},
 		onPUSHBACK: function(event, from, to) {
 			audio.playExclusive('startTaxi');
-			setTimeout(function() {
+			timeout = setTimeout(function() {
 				fsm.taxiingToRwy();
 			}, 80); // TODO: This time should be user defined
 		},
