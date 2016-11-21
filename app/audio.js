@@ -23,6 +23,7 @@ function Audio() {
 	this.playExclusive = function(name) {
 		if (audios[name]) {
 			this.stopAll();
+			audios[name].setVolume(10);
 			audios[name].play();
 			// console.warn('play', name);
 		}

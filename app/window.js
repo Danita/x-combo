@@ -56,8 +56,8 @@ var fsm = StateMachine.create({
 		{name: 'startedBoarding', from: 'STANDBY', to: 'BOARDING'},
 		{name: 'startedTaxi', from: 'BOARDING', to: 'PUSHBACK'},
 		{name: 'taxiingToRwy', from: 'PUSHBACK', to: 'TAXI_RWY'},
-		{name: 'enteredRwy', from: 'TAXI_RWY', to: 'TAKEOFF'},
-		{name: 'tookOff', from: 'TAKEOFF', to: 'ASCENT'},
+		{name: 'takingOff', from: 'TAXI_RWY', to: 'TAKEOFF'},
+		{name: 'ascending', from: 'TAKEOFF', to: 'ASCENT'},
 		{name: 'leveledFlight', from: 'ASCENT', to: 'CRUISE'},
 		{name: 'turbulenceEncountered', from: 'CRUISE', to: 'CRUISE_TURBULENCE'},
 		{name: 'turbulenceDissipated', from: 'CRUISE_TURBULENCE', to: 'CRUISE'},
@@ -84,7 +84,7 @@ var fsm = StateMachine.create({
 		onBOARDING: function(event, from, to) {
 			audio.playExclusive('welcome');
 			timer = setInterval(function() {
-				if (status.getDistanceTravelled() > 10) {
+				if (status.getDistanceTravelled() > 1) { // TODO: User defined
 					clearInterval(timer);
 					fsm.startedTaxi();
 				}
@@ -94,14 +94,14 @@ var fsm = StateMachine.create({
 			audio.playExclusive('startTaxi');
 			timeout = setTimeout(function() {
 				fsm.taxiingToRwy();
-			}, 80); // TODO: This time should be user defined
+			}, 80 * 1000); // TODO: This time should be user defined
 		},
 		onTAXI_RWY: function(event, from, to) {
 			audio.playExclusive('safety');
 			timer = setInterval(function() {
-				if (status.isOnRunway()) {
+				if (status.isAscending()) {
 					clearInterval(timer);
-					fsm.enteredRwy();
+					fsm.takingOff();
 				}
 			}, 1000);
 		},
@@ -109,7 +109,7 @@ var fsm = StateMachine.create({
 			timer = setInterval(function() {
 				if (status.isAscending()) {
 					clearInterval(timer);
-					fsm.tookOff();
+					fsm.ascending();
 				}
 			}, 1000);
 		},
